@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">To Do List</string>
+    <string name="app_name">Play with Coroutines</string>
     <string name="hello_text">Hello World! Let`s do Kotlin!</string>
     <string name="i_love_kotlin">I love Kotlin</string>
     <string name="kotlin_link">https://developer.android.com/kotlin</string>

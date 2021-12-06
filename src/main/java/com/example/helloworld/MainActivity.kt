@@ -1,112 +1,71 @@
-package com.example.helloworld
 
-import android.content.Intent
-import android.net.Uri
-import androidx.appcompat.app.AppCompatActivity
+package coroutines
+
 import android.os.Bundle
-import android.util.Xml
+import android.util.Log
 import android.view.View
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.example.helloworld.BlogService
+import com.example.helloworld.R
 
-import android.widget.Button
-import android.widget.EditText
-import android.widget.ListView
-import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
-import com.google.android.material.floatingactionbutton.FloatingActionButton
-import com.google.firebase.database.*
+import kotlinx.android.synthetic.main.activity_main.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import java.math.BigInteger
+import java.util.*
+import kotlin.system.measureTimeMillis
 
-class MainActivity : AppCompatActivity(), UpdateAndDelete {
+private const val TAG = "MainActivity"
+private const val BASE_URL = "https://jsonplaceholder.typicode.com"
 
-    lateinit var database:DatabaseReference
-    var toDoList: MutableList<ToDoModel>? = null
-    lateinit var adapter: ToDoAdapter
+data class ToDo(val id: Int, val userId: Int, val title: String)
+data class User(val id: Int, val name: String, val email: String)
 
-    private var listViewItem: ListView? = null
-
+class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val fab = findViewById<View>(R.id.fab) as FloatingActionButton
-
-        listViewItem = findViewById(R.id.item_listView) as ListView
-
-
-        database = FirebaseDatabase.getInstance().reference
-
-        fab.setOnClickListener {view ->
-            val alertDialog = AlertDialog.Builder(this)
-            val textEditText = EditText(this)
-            alertDialog.setMessage("Add TODO Item")
-            alertDialog.setTitle("Enter ToDo item")
-            alertDialog.setView(textEditText)
-            alertDialog.setPositiveButton("Add") {dialog, i ->
-                val  toDoItemData = ToDoModel.createList()
-                toDoItemData.itemDataText = textEditText.text.toString()
-                toDoItemData.done = false
-
-                val newItemData = database.child("todo").push()
-                toDoItemData.Uid = newItemData.key
-
-                newItemData.setValue(toDoItemData)
-
-                dialog.dismiss()
-                Toast.makeText(this, "item saved", Toast.LENGTH_LONG).show()
-            }
-
-            alertDialog.show()
+        Log.i(TAG, "onCreate current thread: ${Thread.currentThread().name}")
+        btnNetwork.setOnClickListener {
+            doApiRequests()
         }
 
-        toDoList = mutableListOf<ToDoModel>()
-        adapter = ToDoAdapter(this, toDoList!!)
-        listViewItem!!.adapter = adapter
-
-        database.addValueEventListener(object : ValueEventListener {
-            override fun onCancelled(error: DatabaseError) {
-                Toast.makeText(applicationContext, "No item added", Toast.LENGTH_LONG).show()
-            }
-
-            override fun onDataChange(snapshot: DataSnapshot) {
-                toDoList!!.clear()
-                addItemToList(snapshot)
-            }
-        })
-
-    }
-
-    private fun addItemToList(snapshot: DataSnapshot) {
-        val items = snapshot.children.iterator()
-
-        if (items.hasNext()) {
-            val toDoIndexedValue = items.next()
-            val itemsIterator = toDoIndexedValue.children.iterator()
-
-            while (itemsIterator.hasNext()) {
-                val currentItem = itemsIterator.next()
-                val toDoItemData = ToDoModel.createList()
-
-                val map = currentItem.getValue() as HashMap<String, Any>
-
-                toDoItemData.Uid = currentItem.key
-                toDoItemData.done = map.get("done") as Boolean?
-                toDoItemData.itemDataText = map.get("itemDataText") as String?
-                toDoList!!.add(toDoItemData)
+        btnCompute.setOnClickListener {
+            lifecycleScope.launch(Dispatchers.Main) {
+                progressBar.visibility = View.VISIBLE
+                val timeTaken = doExpensiveWork()
+                progressBar.visibility = View.INVISIBLE
+                textView.text = timeTaken
             }
         }
-
-        adapter.notifyDataSetChanged()
     }
 
-    override fun modifyItem(itemUid: String, isDone: Boolean) {
-        val itemReference = database.child("todo").child(itemUid)
-        itemReference.child("done").setValue(isDone)
+    private suspend fun doExpensiveWork() = withContext(Dispatchers.Default) {
+        Log.i(TAG, "doExpensiveWork coroutine thread: ${Thread.currentThread().name}")
+        val timeTakenMillis = measureTimeMillis { BigInteger.probablePrime(1000, Random()) }
+        "Time taken (ms): $timeTakenMillis"
     }
 
-    override fun onItemDelete(itemUid: String) {
-        val itemReference = database.child("todo").child(itemUid)
-        itemReference.removeValue()
-        adapter.notifyDataSetChanged()
+    private fun doApiRequests() {
+        val retrofit = Retrofit.Builder().baseUrl(BASE_URL)
+                .addConverterFactory(GsonConverterFactory.create()).build()
+        val blogService = retrofit.create(BlogService::class.java)
+
+        lifecycleScope.launch {
+            Log.i(TAG, "doApiRequests coroutine thread: ${Thread.currentThread().name}")
+            try {
+                val blogPost = blogService.getToDo((1..100).random())
+                val user = blogService.getUser(blogPost.userId)
+                val postsByUser = blogService.getToDosByUser(user.id)
+                textView.text = "User ${user.name} made ${postsByUser.size} ToDos"
+            } catch (exception: Exception) {
+                Log.e(TAG, "Exception $exception")
+            }
+        }
     }
-
-
 }
